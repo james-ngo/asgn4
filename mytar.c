@@ -27,6 +27,9 @@
 #define HDR 512
 #define DISK 4096
 
+int v_flag = 0;
+int S_flag = 0;
+
 int main(int argc, char *argv[]) {
 	DIR *d;
 	int i, fd;
@@ -34,9 +37,7 @@ int main(int argc, char *argv[]) {
 	int c_flag = 0;
 	int t_flag = 0;
 	int x_flag = 0;
-	int v_flag = 0;
 	int f_flag = 0;
-	int S_flag = 0;
 	int ctx = 0;
 	char *path;
 	char end[HDR * 2];
@@ -182,6 +183,9 @@ void write_header(int fdout, const char *path, const char *file) {
 	}
 	hdr = (struct header*)malloc(sizeof(struct header));
 	hdr = memset(hdr, 0, HDR);
+	if (v_flag) {
+		printf("%s\n", path);
+	}
 	strcpy(hdr->name, path);
 	sprintf(hdr->mode, "%07o", buf->st_mode);
 	if (buf->st_uid > 07777777) {
