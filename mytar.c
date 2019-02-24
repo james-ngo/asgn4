@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
 		}
 		strcat(path, argv[3]);
 		strcat(path, "/");
-		write_header(fd, path, path);
+		write_header(fd, path);
 		carchive(d, fd, path);
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
@@ -142,7 +142,7 @@ void carchive(DIR *dir, int fd, char *path) {
 			strcmp(ent->d_name, "..")) {
 			strcat(path, ent->d_name);
 			strcat(path, "/");
-			write_header(fd, path, path);
+			write_header(fd, path);
 			if (NULL == (d = opendir(path))) {
 				perror("opendir");
 				free(buf);
@@ -153,30 +153,22 @@ void carchive(DIR *dir, int fd, char *path) {
 			path[strlen(path) - strlen(ent->d_name) - 1] = '\0';
 		}
 		else if (!S_ISDIR(buf->st_mode)) {
-			if (-1 == chdir(path)) {
-				perror("chdir");
-				free(buf);
-				exit(5);
-			}
 			strcat(path, ent->d_name);
-			strcat(path, "/");
-			write_header(fd, path, ent->d_name);
-			if (-1 == chdir("..")) {
-				perror("chdir");
-				exit(5);
+			write_header(fd, path);
 			}
-		}
 	}
 	free(buf);
 }
 
-void write_header(int fdout, const char *path, const char *file) {
+void write_header(int fdout, const char *path) {
+	/* Populate header struct and write to outfile. */
 	int fdin;
 	struct passwd *pwd;
 	struct group *grp;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
 	struct header *hdr; 
-	if (-1 == lstat(file, buf)) {
+	if (-1 == lstat(path, buf)) {
+		printf("%s\n", path);
 		perror("stat");
 		free(buf);
 		exit(3);
@@ -245,7 +237,7 @@ void write_header(int fdout, const char *path, const char *file) {
 		exit(4);
 	}
 	if (!S_ISDIR(buf->st_mode)) {
-		if (-1 == (fdin = open(file, O_RDONLY))) {
+		if (-1 == (fdin = open(path, O_RDONLY))) {
 			perror("open");
 			exit(1);
 		}
@@ -256,6 +248,9 @@ void write_header(int fdout, const char *path, const char *file) {
 }
 
 void write_content(int fdin, int fdout) {
+	/* Copy contents from file to .tar file.
+	 * Write amount of '\0' to have total number of
+	 * bytes rounded up to 512 bytes. */
 	int num, bytes_written = 0;
 	char buf[DISK];
 	while ((num = read(fdin, buf, DISK)) > 0) {

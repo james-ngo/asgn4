@@ -3,7 +3,7 @@
 
 void carchive(DIR*, int, char*);
 
-void write_header(int, const char*, const char*);
+void write_header(int, const char*);
 
 void write_content(int, int);
 
