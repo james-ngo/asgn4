@@ -22,7 +22,8 @@
 #define MTIME 12
 #define TYPEFLAG 1
 #define MAGIC 6
-#define UNAME GNAME 32
+#define UNAME 32
+#define GNAME 32
 #define PREFIX 155
 #define HDR 512
 #define DISK 4096
@@ -114,7 +115,9 @@ int main(int argc, char *argv[]) {
 		}
 		strcat(path, argv[3]);
 		strcat(path, "/");
-		write_header(fd, path);
+		if (write_header(fd, path)) {
+			octal_err(path);
+		}
 		carchive(d, fd, path);
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
@@ -142,7 +145,9 @@ void carchive(DIR *dir, int fd, char *path) {
 			strcmp(ent->d_name, "..")) {
 			strcat(path, ent->d_name);
 			strcat(path, "/");
-			write_header(fd, path);
+			if (write_header(fd, path)) {
+				octal_err(path);
+			}
 			if (NULL == (d = opendir(path))) {
 				perror("opendir");
 				free(buf);
@@ -154,13 +159,15 @@ void carchive(DIR *dir, int fd, char *path) {
 		}
 		else if (!S_ISDIR(buf->st_mode)) {
 			strcat(path, ent->d_name);
-			write_header(fd, path);
+			if (write_header(fd, path)) {
+				octal_err(path);
+			}
 			}
 	}
 	free(buf);
 }
 
-void write_header(int fdout, const char *path) {
+int write_header(int fdout, const char *path) {
 	/* Populate header struct and write to outfile. */
 	int fdin;
 	struct passwd *pwd;
@@ -175,31 +182,33 @@ void write_header(int fdout, const char *path) {
 	}
 	hdr = (struct header*)malloc(sizeof(struct header));
 	hdr = memset(hdr, 0, HDR);
-	if (v_flag) {
-		printf("%s\n", path);
-	}
 	strcpy(hdr->name, path);
 	sprintf(hdr->mode, "%07o", buf->st_mode);
 	if (buf->st_uid > 07777777) {
-		insert_special_int(hdr->uid, UID, buf->st_uid);
+		if (S_flag) {
+			free(buf);
+			free(hdr);
+			return 1;
+		}
+		insert_octal(hdr->uid, UID, buf->st_uid);
 	}
 	else {
 		sprintf(hdr->uid, "%07o", buf->st_uid);
 	}
 	if (buf->st_gid > 07777777) {
-		insert_special_int(hdr->gid, GID, buf->st_uid);
+		insert_octal(hdr->gid, GID, buf->st_uid);
 	}
 	else {
 		sprintf(hdr->gid, "%07o", buf->st_gid);
 	}
 	if (buf->st_size > 0777777) {
-		insert_special_int(hdr->size, SIZE, buf->st_size);
+		insert_octal(hdr->size, SIZE, buf->st_size);
 	}
 	else {
 		sprintf(hdr->size, "%07o", (int)buf->st_size);
 	}
 	if (buf->st_mtime > 0777777) {
-		insert_special_int(hdr->mtime, MTIME, buf->st_mtime);
+		insert_octal(hdr->mtime, MTIME, buf->st_mtime);
 	}
 	else {
 		sprintf(hdr->mtime, "%07o", (int)buf->st_mtime);
@@ -220,14 +229,14 @@ void write_header(int fdout, const char *path) {
 	strcpy(hdr->uname, pwd->pw_name);
 	grp = getgrgid(buf->st_gid);
 	strcpy(hdr->gname, grp->gr_name);
-	if (major(buf->st_dev) > 07777777) {
-		insert_special_int(hdr->devmajor, DEVMAJOR, major(buf->st_dev));
+	if (major(buf->st_dev) > 07777777) { 
+		insert_octal(hdr->devmajor, DEVMAJOR, major(buf->st_dev));
 	}
 	else {
 		sprintf(hdr->devmajor, "%07o", major(buf->st_dev));
 	}
 	if (minor(buf->st_dev) > 07777777) {
-		insert_special_int(hdr->devminor, DEVMINOR, minor(buf->st_dev));
+		insert_octal(hdr->devminor, DEVMINOR, minor(buf->st_dev));
 	}
 	else {
 		sprintf(hdr->devminor, "%07o", minor(buf->st_dev));
@@ -235,6 +244,9 @@ void write_header(int fdout, const char *path) {
 	if (-1 == write(fdout, hdr, HDR)) {
 		perror("write");
 		exit(4);
+	}
+	if (v_flag) {
+		printf("%s\n", path);
 	}
 	if (!S_ISDIR(buf->st_mode)) {
 		if (-1 == (fdin = open(path, O_RDONLY))) {
@@ -245,6 +257,7 @@ void write_header(int fdout, const char *path) {
 	}
 	free(buf);
 	free(hdr);
+	return 0;
 }
 
 void write_content(int fdin, int fdout) {
@@ -261,7 +274,13 @@ void write_content(int fdin, int fdout) {
 	write(fdout, buf, (((bytes_written / HDR) + 1) * HDR) - bytes_written);
 }
 
-int insert_special_int(char *where, size_t size, int32_t val) {
+void octal_err(char *path) {
+	printf("(insert_octal:251) octal value too long. (013655557)\n"
+	       "octal value too long. (013655557)\n"
+	       "%s: Unable to create conforming header.  Skipping.\n", path);
+}
+
+int insert_octal(char *where, size_t size, int32_t val) {
 	int err = 0;
 	if (val < 0 || (size < sizeof(val))) {
 		err++;

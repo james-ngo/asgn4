@@ -3,11 +3,13 @@
 
 void carchive(DIR*, int, char*);
 
-void write_header(int, const char*);
+int write_header(int, const char*);
 
 void write_content(int, int);
 
-int insert_special_int(char*, size_t, int32_t);
+int insert_octal(char*, size_t, int32_t);
+
+void octal_err(char*);
 
 struct header {
 	char name[100];
