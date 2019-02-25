@@ -121,10 +121,11 @@ int main(int argc, char *argv[]) {
 				octal_err(path);
 			}
 			carchive(fd, path);
+			closedir(d);
 		}
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
-		closedir(d);
+		close(fd);
 		free(buf);
 		free(path);
 	}
@@ -170,6 +171,7 @@ void carchive(int fd, char *path) {
 				}
 			}
 		}
+		closedir(d);
 	}
 	else {		
 		if (write_header(fd, path)) {
@@ -263,6 +265,7 @@ int write_header(int fdout, const char *path) {
 			exit(1);
 		}
 		write_content(fdin, fdout);
+		close(fdin);
 	}
 	free(buf);
 	free(hdr);
