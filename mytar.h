@@ -1,7 +1,7 @@
 #ifndef MYTAR_H
 #define MYTAR_H
 
-void carchive(DIR*, int, char*);
+void carchive(int, char*);
 
 int write_header(int, const char*);
 

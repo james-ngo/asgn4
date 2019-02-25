@@ -105,20 +105,23 @@ int main(int argc, char *argv[]) {
 			close(fd);
 			return 0;
 		}
-		if (NULL == (d = opendir(argv[3]))) {
-			perror("opendir");
-			exit(2);
+		for (i = 3; i < argc; i++) {
+			path[0] = '\0';
+			if (-1 == lstat(argv[i], buf)) {
+				perror("stat");
+				exit(3);
+			}
+			if (NULL == (d = opendir(argv[i]))) {
+				perror("opendir");
+				exit(2);
+			}
+			strcat(path, argv[i]);
+			strcat(path, "/");
+			if (write_header(fd, path)) {
+				octal_err(path);
+			}
+			carchive(fd, path);
 		}
-		if (-1 == lstat(argv[3], buf)) {
-			perror("stat");
-			exit(3);
-		}
-		strcat(path, argv[3]);
-		strcat(path, "/");
-		if (write_header(fd, path)) {
-			octal_err(path);
-		}
-		carchive(d, fd, path);
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
 		closedir(d);
@@ -129,47 +132,57 @@ int main(int argc, char *argv[]) {
 }
 
 /* creates an archive */
-void carchive(DIR *dir, int fd, char *path) {
+void carchive(int fd, char *path) {
 	DIR *d;
 	struct dirent *ent;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
-	while ((ent = readdir(dir))) {
-		strcat(path, ent->d_name);
-		if (-1 == lstat(path, buf)) {
-			perror("stat");
-			free(buf);
-			exit(3);
+	if (-1 == lstat(path, buf)) {
+		perror("stat");
+		exit(3);
+	}
+	if (S_ISDIR(buf->st_mode)) {
+		if (NULL == (d = opendir(path))) {
+			perror("opendir");
+			exit(2);
 		}
-		path[strlen(path) - strlen(ent->d_name)] = '\0';
-		if (S_ISDIR(buf->st_mode) && strcmp(ent->d_name, ".") &&
-			strcmp(ent->d_name, "..")) {
+		while ((ent = readdir(d))) {
 			strcat(path, ent->d_name);
-			strcat(path, "/");
-			if (write_header(fd, path)) {
-				octal_err(path);
-			}
-			if (NULL == (d = opendir(path))) {
-				perror("opendir");
+			if (-1 == lstat(path, buf)) {
+				perror("stat");
 				free(buf);
-				exit(2);
+				exit(3);
 			}
-			carchive(d, fd, path);
-			closedir(d);
-			path[strlen(path) - strlen(ent->d_name) - 1] = '\0';
+			path[strlen(path) - strlen(ent->d_name)] = '\0';
+			if (S_ISDIR(buf->st_mode) && strcmp(ent->d_name, ".") &&
+				strcmp(ent->d_name, "..")) {
+				strcat(path, ent->d_name);
+				strcat(path, "/");
+				if (write_header(fd, path)) {
+					octal_err(path);
+				}
+				carchive(fd, path);
+				path[strlen(path)-strlen(ent->d_name)-1] = '\0';
+			}
+			else if (!S_ISDIR(buf->st_mode)) {
+				strcat(path, ent->d_name);
+				if (write_header(fd, path)) {
+					octal_err(path);
+				}
+			}
 		}
-		else if (!S_ISDIR(buf->st_mode)) {
-			strcat(path, ent->d_name);
-			if (write_header(fd, path)) {
-				octal_err(path);
-			}
-			}
+	}
+	else {		
+		if (write_header(fd, path)) {
+			octal_err(path);
+		}
 	}
 	free(buf);
 }
 
 int write_header(int fdout, const char *path) {
 	/* Populate header struct and write to outfile. */
-	int fdin;
+	int fdin, i;
+	unsigned char chksum = 0;
 	struct passwd *pwd;
 	struct group *grp;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
@@ -183,7 +196,7 @@ int write_header(int fdout, const char *path) {
 	hdr = (struct header*)malloc(sizeof(struct header));
 	hdr = memset(hdr, 0, HDR);
 	strcpy(hdr->name, path);
-	sprintf(hdr->mode, "%07o", buf->st_mode);
+	sprintf(hdr->mode, "%07o", buf->st_mode & 07777);
 	if (buf->st_uid > 07777777) {
 		if (S_flag) {
 			free(buf);
@@ -201,13 +214,16 @@ int write_header(int fdout, const char *path) {
 	else {
 		sprintf(hdr->gid, "%07o", buf->st_gid);
 	}
-	if (buf->st_size > 0777777) {
+	if (S_ISLNK(buf->st_mode) || S_ISDIR(buf->st_mode)) {
+		sprintf(hdr->size, "%011o", 0);
+	}
+	else if (buf->st_size > 077777777777) {
 		insert_octal(hdr->size, SIZE, buf->st_size);
 	}
 	else {
-		sprintf(hdr->size, "%07o", (int)buf->st_size);
+		sprintf(hdr->size, "%011o", (int)buf->st_size);
 	}
-	if (buf->st_mtime > 0777777) {
+	if (buf->st_mtime > 077777777777) {
 		insert_octal(hdr->mtime, MTIME, buf->st_mtime);
 	}
 	else {
@@ -229,18 +245,11 @@ int write_header(int fdout, const char *path) {
 	strcpy(hdr->uname, pwd->pw_name);
 	grp = getgrgid(buf->st_gid);
 	strcpy(hdr->gname, grp->gr_name);
-	if (major(buf->st_dev) > 07777777) { 
-		insert_octal(hdr->devmajor, DEVMAJOR, major(buf->st_dev));
+	memset(hdr->chksum, ' ', CHKSUM);
+	for (i = 0; i < HDR; i++) {
+		chksum += (unsigned char)((unsigned char*)hdr)[i];
 	}
-	else {
-		sprintf(hdr->devmajor, "%07o", major(buf->st_dev));
-	}
-	if (minor(buf->st_dev) > 07777777) {
-		insert_octal(hdr->devminor, DEVMINOR, minor(buf->st_dev));
-	}
-	else {
-		sprintf(hdr->devminor, "%07o", minor(buf->st_dev));
-	}
+	sprintf(hdr->chksum, "%07o", chksum);
 	if (-1 == write(fdout, hdr, HDR)) {
 		perror("write");
 		exit(4);
