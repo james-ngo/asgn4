@@ -118,7 +118,9 @@ int main(int argc, char *argv[]) {
 			strcat(path, argv[i]);
 			strcat(path, "/");
 			if (write_header(fd, path)) {
+				path[strlen(path)-1] = '\0';
 				octal_err(path);
+				strcat(path, "/");
 			}
 			carchive(fd, path);
 			closedir(d);
@@ -159,7 +161,9 @@ void carchive(int fd, char *path) {
 				strcat(path, ent->d_name);
 				strcat(path, "/");
 				if (write_header(fd, path)) {
+					path[strlen(path)-1] = '\0';
 					octal_err(path);
+					strcat(path, "/");
 				}
 				carchive(fd, path);
 				path[strlen(path)-strlen(ent->d_name)-1] = '\0';
