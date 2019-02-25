@@ -184,7 +184,7 @@ void carchive(int fd, char *path) {
 int write_header(int fdout, const char *path) {
 	/* Populate header struct and write to outfile. */
 	int fdin, i;
-	unsigned char chksum = 0;
+	unsigned int chksum = 0;
 	struct passwd *pwd;
 	struct group *grp;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
