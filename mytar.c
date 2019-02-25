@@ -131,6 +131,12 @@ int main(int argc, char *argv[]) {
 		free(buf);
 		free(path);
 	}
+	else if (t_flag) {
+		if (-1 == (fd = open(argv[2], O_RDONLY))) {
+			perror("open");			
+		}
+		tarchive(fd, argv, argc);
+	}
         return 0; 
 }
 
@@ -183,6 +189,45 @@ void carchive(int fd, char *path) {
 		}
 	}
 	free(buf);
+}
+
+/* listing an archive */
+void tarchive(int fd, char *argv[], int argc) {
+	int fsize, up512;
+	struct header *hdr = (struct header*)malloc(sizeof(struct header));
+	while (0 < read(fd, hdr, HDR)) {
+		if (!hdr->name[0]) {
+			break;
+		}
+		fsize = strtol(hdr->size, NULL, OCTAL);
+		if (argc < 4 || in(hdr->name, argv, argc)) {
+			printf("%s\n", hdr->name);
+		}
+		if (fsize > 0) {
+		 	up512 = (((fsize / HDR) + 1) * HDR);
+			lseek(fd, up512, SEEK_CUR);
+		}
+	}
+}
+
+int in(char *target, char *argv[], int argc) {
+	int i;
+	for (i = 3; i < argc; i++) {
+		if (!strcmp(argv[i], target)) {
+			return 1;
+		}
+		else if (!strcmp(strcat(argv[i], "/"), target)) {
+			argv[i][strlen(argv[i]) - 1] = '\0';
+			return 1;
+		}
+		argv[i][strlen(argv[i]) - 1] = '\0';
+	}
+	return 0;
+}
+
+/* extract an archive */
+void xarchive() {
+
 }
 
 int write_header(int fdout, const char *path) {

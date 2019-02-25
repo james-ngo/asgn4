@@ -3,6 +3,10 @@
 
 void carchive(int, char*);
 
+void tarchive(int, char *argv[], int);
+
+int in(char*, char *argv[], int);
+
 int write_header(int, const char*);
 
 void write_content(int, int);
