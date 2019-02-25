@@ -116,7 +116,9 @@ int main(int argc, char *argv[]) {
 				exit(2);
 			}
 			strcat(path, argv[i]);
-			strcat(path, "/");
+			if (path[strlen(path) - 1] != '/') {
+				strcat(path, "/");
+			}
 			if (write_header(fd, path)) {
 				path[strlen(path)-1] = '\0';
 				octal_err(path);
@@ -230,9 +232,10 @@ void xarchive() {
 
 }
 
-int write_header(int fdout, const char *path) {
+int write_header(int fdout, char *path) {
 	/* Populate header struct and write to outfile. */
 	int fdin, i;
+	char *namestart;
 	unsigned int chksum = 0;
 	struct passwd *pwd;
 	struct group *grp;
@@ -246,7 +249,14 @@ int write_header(int fdout, const char *path) {
 	}
 	hdr = (struct header*)malloc(sizeof(struct header));
 	hdr = memset(hdr, 0, HDR);
-	strcpy(hdr->name, path);
+	if (strlen(path) <= NAME) {
+		strcpy(hdr->name, path);
+	}
+	else {
+		strcpy(hdr->name, namestart = prefix_helper(path));
+		strcpy(hdr->prefix, path);
+		namestart[-1] = '/';
+	}
 	sprintf(hdr->mode, "%07o", buf->st_mode & 07777);
 	if (buf->st_uid > 07777777) {
 		if (S_flag) {
@@ -282,7 +292,7 @@ int write_header(int fdout, const char *path) {
 	}
 	if (S_ISLNK(buf->st_mode)) {
 		*(hdr->typeflag) = '2';
-		readlink(path, hdr->linkname, 100);
+		readlink(path, hdr->linkname, LINKNAME);
 	}
 	else if (S_ISDIR(buf->st_mode)) {
 		*(hdr->typeflag) = '5';
@@ -319,6 +329,19 @@ int write_header(int fdout, const char *path) {
 	free(buf);
 	free(hdr);
 	return 0;
+}
+
+char *prefix_helper(char *path) {
+	int i;
+	char *name;
+	char *endptr = path + strlen(path);
+	for (;i < NAME; i++, endptr--) {
+		if (*endptr == '/') {
+			name = endptr;	
+		}
+	}
+	*name = '\0';
+	return name + 1;
 }
 
 void write_content(int fdin, int fdout) {

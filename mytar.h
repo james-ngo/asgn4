@@ -5,9 +5,11 @@ void carchive(int, char*);
 
 void tarchive(int, char *argv[], int);
 
+char *prefix_helper(char*);
+
 int in(char*, char *argv[], int);
 
-int write_header(int, const char*);
+int write_header(int, char*);
 
 void write_content(int, int);
 
