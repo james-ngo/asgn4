@@ -16,6 +16,7 @@
 #define UID 8
 #define GID 8
 #define CHKSUM 8
+#define CHKSUM_OFF 148
 #define DEVMAJOR 8
 #define DEVMINOR 8
 #define OCTAL 8
@@ -23,6 +24,7 @@
 #define MTIME 12
 #define TYPEFLAG 1
 #define MAGIC 6
+#define VERSION 2
 #define UNAME 32
 #define GNAME 32
 #define PREFIX 155
@@ -197,7 +199,7 @@ void carchive(int fd, char *path) {
 
 /* listing an archive */
 void tarchive(int fd, char *argv[], int argc) {
-	int fsize, up512, i, st_mode;
+	int fsize, up512, i, st_mode, chksum;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
 	time_t t;
 	struct tm *time = (struct tm*)malloc(sizeof(struct tm));
@@ -208,6 +210,26 @@ void tarchive(int fd, char *argv[], int argc) {
 		}
 		fsize = strtol(hdr->size, NULL, OCTAL);
 		if (argc < 4 || in(hdr->name, argv, argc)) {
+			chksum = 0;
+			for (i = 0; i < HDR; i++) {
+				if (i < CHKSUM_OFF ||
+					i >= CHKSUM_OFF + CHKSUM) {
+					chksum += (unsigned char)
+						((unsigned char*)(hdr))[i];
+				}
+				else {
+					chksum += ' ';
+				}
+			}
+			if (chksum != strtol(hdr->chksum, NULL, OCTAL)
+				|| strncmp(hdr->magic, "ustar", MAGIC - 1) ||
+				(S_flag && (strncmp(hdr->version, "00",
+				VERSION) || strncmp(hdr->magic, "ustar\0",
+				MAGIC) || (hdr->uid[0] < '0' ||
+				hdr->uid[0] > '7')))) {
+				printf("Malformed header found.  Bailing.\n");
+				exit(7);
+			}
 			if (v_flag) {
 				st_mode = strtol(hdr->mode, NULL, 8);
 				for (i = 0; i < PERMS; i++) {
@@ -231,7 +253,11 @@ void tarchive(int fd, char *argv[], int argc) {
 					time->tm_min);
 				strcpy(perms, "drwxrwxrwx");
 			}
-			printf("%s\n", hdr->name);
+			if (hdr->prefix[0]) {
+				strcat(hdr->prefix, "/");
+			}
+			printf("%s%s\n", hdr->prefix, hdr->name);
+			hdr->prefix[strlen(hdr->prefix)] = '\0';
 		}
 		if (fsize > 0) {
 		 	up512 = (((fsize / HDR) + 1) * HDR);
@@ -256,7 +282,7 @@ int in(char *target, char *argv[], int argc) {
 }
 
 /* extract an archive */
-void xarchive() {
+void xarchive(int fd, char *argv[], int argc) {
 
 }
 
