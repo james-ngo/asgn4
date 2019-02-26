@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 #include "mytar.h"
 #define NAME 100
 #define LINKNAME 100
@@ -27,6 +28,7 @@
 #define PREFIX 155
 #define HDR 512
 #define DISK 4096
+#define PERMS 10
 
 int v_flag = 0;
 int S_flag = 0;
@@ -195,14 +197,40 @@ void carchive(int fd, char *path) {
 
 /* listing an archive */
 void tarchive(int fd, char *argv[], int argc) {
-	int fsize, up512;
+	int fsize, up512, i, st_mode;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
+	time_t t;
+	struct tm *time = (struct tm*)malloc(sizeof(struct tm));
+	char perms[PERMS] = "drwxrwxrwx";
 	while (0 < read(fd, hdr, HDR)) {
 		if (!hdr->name[0]) {
 			break;
 		}
 		fsize = strtol(hdr->size, NULL, OCTAL);
 		if (argc < 4 || in(hdr->name, argv, argc)) {
+			if (v_flag) {
+				st_mode = strtol(hdr->mode, NULL, 8);
+				for (i = 0; i < PERMS; i++) {
+					if (!((st_mode << i) & 01000)) {
+						perms[i] = '-';
+					}
+				}
+				if (*(hdr->typeflag) == '5') {
+					perms[0] = 'd';
+				}
+				else {
+					perms[0] = '-';
+				}
+				t = strtol(hdr->mtime, NULL, OCTAL);
+				time = localtime(&t);
+				printf("%s %s/%s %8ld %d-%02d-%d %d:%d ",
+					perms, hdr->uname, hdr->gname,
+					strtol(hdr->size, NULL, OCTAL),
+					1900 + time->tm_year, 1 + time->tm_mon,
+					time->tm_mday, time->tm_hour,
+					time->tm_min);
+				strcpy(perms, "drwxrwxrwx");
+			}
 			printf("%s\n", hdr->name);
 		}
 		if (fsize > 0) {
@@ -385,4 +413,13 @@ int insert_octal(char *where, size_t size, int32_t val) {
 		*where |=0x80;
 	}
 	return err;
+}
+
+uint32_t extract_octal(char *where, int len) {
+	int32_t val = -1;
+	if ((len >= sizeof(val)) && (where[0] & 0x80)) {
+		val = *(int32_t*)(where+len-sizeof(val));
+		val = ntohl(val);
+	}
+	return val;
 }

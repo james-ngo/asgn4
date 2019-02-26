@@ -17,6 +17,8 @@ void write_content(int, int);
 
 int insert_octal(char*, size_t, int32_t);
 
+uint32_t extract_octal(char*, int);
+
 void octal_err(char*);
 
 struct header {
