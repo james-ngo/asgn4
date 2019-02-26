@@ -215,10 +215,10 @@ void tarchive(int fd, char *argv[], int argc) {
 int in(char *target, char *argv[], int argc) {
 	int i;
 	for (i = 3; i < argc; i++) {
-		if (!strcmp(argv[i], target)) {
+		if (path_helper(argv[i], target)) {
 			return 1;
 		}
-		else if (!strcmp(strcat(argv[i], "/"), target)) {
+		else if (path_helper(strcat(argv[i], "/"), target)) {
 			argv[i][strlen(argv[i]) - 1] = '\0';
 			return 1;
 		}
@@ -342,6 +342,16 @@ char *prefix_helper(char *path) {
 	}
 	*name = '\0';
 	return name + 1;
+}
+
+int path_helper(char *prefix, char *path) {
+	int i;
+	for (i = 0; i < strlen(prefix); i++) {
+		if (prefix[i] != path[i]) {
+			return 0;
+		}
+	}
+	return 1;
 }
 
 void write_content(int fdin, int fdout) {
