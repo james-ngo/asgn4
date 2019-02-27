@@ -3,7 +3,7 @@
 
 void carchive(int, char*);
 
-void tarchive(int, char *argv[], int);
+void xtarchive(int, char *argv[], int, char);
 
 char *prefix_helper(char*);
 

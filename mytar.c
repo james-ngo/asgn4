@@ -39,9 +39,7 @@ int main(int argc, char *argv[]) {
 	DIR *d;
 	int i, fd;
 	struct stat *buf;
-	int c_flag = 0;
-	int t_flag = 0;
-	int x_flag = 0;
+	int flag = 0;
 	int f_flag = 0;
 	int ctx = 0;
 	char *path;
@@ -56,20 +54,20 @@ int main(int argc, char *argv[]) {
 	for (i = 0; i < strlen(argv[1]); i++) {
 		if (argv[1][i] == 'c') {
 			ctx++;
-			if (!c_flag && !t_flag && !x_flag) {
-				c_flag = 1;
+			if (!flag) {
+				flag = 'c';
 			}
 		}
 		else if (argv[1][i] == 't') {
 			ctx++;
-			if (!c_flag && !t_flag && !x_flag) {
-				t_flag = 1;
+			if (!flag) {
+				flag = 't';
 			}
 		}
 		else if (argv[1][i] == 'x') {
 			ctx++;
-			if (!c_flag && !t_flag && !x_flag) {
-				x_flag = 1;
+			if (!flag) {
+				flag = 'x';
 			}
 		}
 		else if (argv[1][i] == 'v') {
@@ -97,7 +95,7 @@ int main(int argc, char *argv[]) {
 		printf("%s: you must specify the 'f' option.\n", argv[0]);
 		return 1;
 	}
-	if (c_flag) {
+	if (flag == 'c') {
 		buf = (struct stat*)malloc(sizeof(struct stat));
 		path = (char*)malloc(sizeof(char) * PATH_MAX);
 		if (-1 == (fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC,
@@ -137,11 +135,11 @@ int main(int argc, char *argv[]) {
 		free(buf);
 		free(path);
 	}
-	else if (t_flag) {
+	else {
 		if (-1 == (fd = open(argv[2], O_RDONLY))) {
 			perror("open");			
 		}
-		tarchive(fd, argv, argc);
+		xtarchive(fd, argv, argc, flag);
 	}
         return 0; 
 }
@@ -198,11 +196,12 @@ void carchive(int fd, char *path) {
 }
 
 /* listing an archive */
-void tarchive(int fd, char *argv[], int argc) {
+void xtarchive(int fd, char *argv[], int argc, char flag) {
 	int fsize, up512, i, st_mode, chksum;
+	char *usrgrp;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
 	time_t t;
-	struct tm *time = (struct tm*)malloc(sizeof(struct tm));
+	struct tm *time;
 	char perms[PERMS] = "drwxrwxrwx";
 	while (0 < read(fd, hdr, HDR)) {
 		if (!hdr->name[0]) {
@@ -230,40 +229,84 @@ void tarchive(int fd, char *argv[], int argc) {
 				printf("Malformed header found.  Bailing.\n");
 				exit(7);
 			}
-			if (v_flag) {
-				st_mode = strtol(hdr->mode, NULL, 8);
-				for (i = 0; i < PERMS; i++) {
-					if (!((st_mode << i) & 01000)) {
-						perms[i] = '-';
+			if (flag == 't') {
+				if (v_flag) {
+					st_mode = strtol(hdr->mode, NULL, 8);
+					for (i = 0; i < PERMS; i++) {
+						if (!((st_mode << i) & 01000)) {
+							perms[i] = '-';
+						}
 					}
+					if (*(hdr->typeflag) == '5') {
+						perms[0] = 'd';
+					}
+					else if (*(hdr->typeflag) == '2') {
+						perms[0] = 'l';
+					}
+					else {
+						perms[0] = '-';
+					}
+					t = strtol(hdr->mtime, NULL, OCTAL);
+					time = localtime(&t);
+					usrgrp = (char*)malloc(sizeof(char) *
+						(strlen(hdr->uname) +
+						strlen(hdr->gname) + 1));
+					strcpy(usrgrp, hdr->uname);
+					strcat(usrgrp, "/");
+					strcat(usrgrp, hdr->gname);
+					printf("%s %17s %8ld %d-%02d-%d %d:%d ",
+						perms, usrgrp,
+						strtol(hdr->size, NULL, OCTAL),
+						1900 + time->tm_year,
+						1 + time->tm_mon,
+						time->tm_mday, time->tm_hour,
+						time->tm_min);
+					strcpy(perms, "drwxrwxrwx");
+					free(usrgrp);
 				}
-				if (*(hdr->typeflag) == '5') {
-					perms[0] = 'd';
+				if (hdr->prefix[0]) {
+					strcat(hdr->prefix, "/");
 				}
-				else {
-					perms[0] = '-';
+				printf("%s%s\n", hdr->prefix, hdr->name);
+				hdr->prefix[strlen(hdr->prefix)] = '\0';
+				if (fsize > 0) {
+				 	up512 = (((fsize / HDR) + 1) * HDR);
+					lseek(fd, up512, SEEK_CUR);
 				}
-				t = strtol(hdr->mtime, NULL, OCTAL);
-				time = localtime(&t);
-				printf("%s %s/%s %8ld %d-%02d-%d %d:%d ",
-					perms, hdr->uname, hdr->gname,
-					strtol(hdr->size, NULL, OCTAL),
-					1900 + time->tm_year, 1 + time->tm_mon,
-					time->tm_mday, time->tm_hour,
-					time->tm_min);
-				strcpy(perms, "drwxrwxrwx");
 			}
-			if (hdr->prefix[0]) {
-				strcat(hdr->prefix, "/");
+			else if (flag == 'x') {
+				
 			}
-			printf("%s%s\n", hdr->prefix, hdr->name);
-			hdr->prefix[strlen(hdr->prefix)] = '\0';
-		}
-		if (fsize > 0) {
-		 	up512 = (((fsize / HDR) + 1) * HDR);
-			lseek(fd, up512, SEEK_CUR);
 		}
 	}
+	free(hdr);
+}
+
+void restore_file(struct header *hdr) {
+	/* given a header file restore the file */
+	char *path;
+	mode_t perms;
+	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
+	if (hdr->prefix[0]) {
+		strcat(hdr->prefix, "/");
+	}
+	path = (char*)malloc(sizeof(char) * (strlen(hdr->prefix) +
+		strlen(hdr->name) + 1));
+	if (hdr->prefix[0]) {
+		strcpy(path, hdr->prefix);
+		strcat(path, "/");
+	}
+	strcat(path, hdr->name);
+	if (*(hdr->typeflag) == '5') {
+		mkdir(path, perms);
+	}
+	else if (*(hdr->typeflag) == '2'){
+
+	}
+	else {
+		
+	}
+	hdr->prefix[strlen(hdr->prefix)] = '\0';
 }
 
 int in(char *target, char *argv[], int argc) {
@@ -279,11 +322,6 @@ int in(char *target, char *argv[], int argc) {
 		argv[i][strlen(argv[i]) - 1] = '\0';
 	}
 	return 0;
-}
-
-/* extract an archive */
-void xarchive(int fd, char *argv[], int argc) {
-
 }
 
 int write_header(int fdout, char *path) {
