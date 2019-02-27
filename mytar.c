@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <utime.h>
 #include "mytar.h"
 #define NAME 100
 #define LINKNAME 100
@@ -100,7 +101,7 @@ int main(int argc, char *argv[]) {
 		path = (char*)malloc(sizeof(char) * PATH_MAX);
 		if (-1 == (fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC,
 			S_IRUSR | S_IWUSR))) {
-			perror("open");
+			perror(argv[2]);
 			exit(1);
 		}
 		if (!argv[3]) {
@@ -110,11 +111,11 @@ int main(int argc, char *argv[]) {
 		for (i = 3; i < argc; i++) {
 			path[0] = '\0';
 			if (-1 == lstat(argv[i], buf)) {
-				perror("stat");
+				perror(argv[i]);
 				exit(3);
 			}
 			if (NULL == (d = opendir(argv[i]))) {
-				perror("opendir");
+				perror(argv[i]);
 				exit(2);
 			}
 			strcat(path, argv[i]);
@@ -150,18 +151,18 @@ void carchive(int fd, char *path) {
 	struct dirent *ent;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
 	if (-1 == lstat(path, buf)) {
-		perror("stat");
+		perror(path);
 		exit(3);
 	}
 	if (S_ISDIR(buf->st_mode)) {
 		if (NULL == (d = opendir(path))) {
-			perror("opendir");
+			perror(path);
 			exit(2);
 		}
 		while ((ent = readdir(d))) {
 			strcat(path, ent->d_name);
 			if (-1 == lstat(path, buf)) {
-				perror("stat");
+				perror(ent->d_name);
 				free(buf);
 				exit(3);
 			}
@@ -304,9 +305,13 @@ int min(int num1, int num2) {
 int restore_file(struct header *hdr) {
 	/* given a header file restore the file */
 	int fd = 0;
+	time_t mtime;
 	char *path;
 	mode_t perms;
+	struct utimbuf *times = (struct utimbuf*)malloc(sizeof(struct utimbuf));
 	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
+	mtime = (time_t)(strtol(hdr->mtime, NULL, OCTAL));
+	times->modtime = mtime;
 	if (hdr->prefix[0]) {
 		strcat(hdr->prefix, "/");
 	}
@@ -325,11 +330,16 @@ int restore_file(struct header *hdr) {
 	}
 	else {
 		if (-1 == (fd = creat(path, perms))) {
-			perror("open");
+			perror(path);
 			exit(2);
 		}		
 	}
+	if (-1 == utime(path, times)) {
+		perror("path");
+		exit(8);
+	}
 	hdr->prefix[strlen(hdr->prefix)] = '\0';
+	free(times);
 	return fd;
 }
 
@@ -358,8 +368,7 @@ int write_header(int fdout, char *path) {
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
 	struct header *hdr; 
 	if (-1 == lstat(path, buf)) {
-		printf("%s\n", path);
-		perror("stat");
+		perror(path);
 		free(buf);
 		exit(3);
 	}
@@ -436,7 +445,7 @@ int write_header(int fdout, char *path) {
 	}
 	if (!S_ISDIR(buf->st_mode)) {
 		if (-1 == (fdin = open(path, O_RDONLY))) {
-			perror("open");
+			perror(path);
 			exit(1);
 		}
 		write_content(fdin, fdout);
