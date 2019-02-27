@@ -1,26 +1,6 @@
 #ifndef MYTAR_H
 #define MYTAR_H
 
-void carchive(int, char*);
-
-void xtarchive(int, char *argv[], int, char);
-
-char *prefix_helper(char*);
-
-int path_helper(char*, char*);
-
-int in(char*, char *argv[], int);
-
-int write_header(int, char*);
-
-void write_content(int, int);
-
-int insert_octal(char*, size_t, int32_t);
-
-uint32_t extract_octal(char*, int);
-
-void octal_err(char*);
-
 struct header {
 	char name[100];
 	char mode[8];
@@ -40,5 +20,29 @@ struct header {
 	char prefix[155];
 	char padding[12];	
 };
+
+void carchive(int, char*);
+
+void xtarchive(int, char *argv[], int, char);
+
+int restore_file(struct header*);
+
+int min(int, int);
+
+char *prefix_helper(char*);
+
+int path_helper(char*, char*);
+
+int in(char*, char *argv[], int);
+
+int write_header(int, char*);
+
+void write_content(int, int);
+
+int insert_octal(char*, size_t, int32_t);
+
+uint32_t extract_octal(char*, int);
+
+void octal_err(char*);
 
 #endif

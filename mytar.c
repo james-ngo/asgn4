@@ -197,7 +197,7 @@ void carchive(int fd, char *path) {
 
 /* listing an archive */
 void xtarchive(int fd, char *argv[], int argc, char flag) {
-	int fsize, up512, i, st_mode, chksum;
+	int fsize, up512, i, st_mode, chksum, fdout, num, wbytes = 0;
 	char *usrgrp;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
 	time_t t;
@@ -275,15 +275,35 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				}
 			}
 			else if (flag == 'x') {
-				
+				if ((fdout = restore_file(hdr))) {
+					while ((num = read(
+						fd, hdr, HDR)) > 0 && wbytes <
+						fsize) {
+						wbytes += num;
+						write(fdout, hdr,
+							min(HDR, fsize));
+						fsize -= HDR;
+					}
+					lseek(fd, -HDR, SEEK_CUR);
+				}
 			}
 		}
 	}
 	free(hdr);
 }
 
-void restore_file(struct header *hdr) {
+int min(int num1, int num2) {
+	if (num1 < num2) {
+		return num1;
+	}
+	else {
+		return num2;
+	}
+}
+
+int restore_file(struct header *hdr) {
 	/* given a header file restore the file */
+	int fd = 0;
 	char *path;
 	mode_t perms;
 	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
@@ -301,12 +321,16 @@ void restore_file(struct header *hdr) {
 		mkdir(path, perms);
 	}
 	else if (*(hdr->typeflag) == '2'){
-
+		/* Create a symlink (figure out how to do that) */
 	}
 	else {
-		
+		if (-1 == (fd = creat(path, perms))) {
+			perror("open");
+			exit(2);
+		}		
 	}
 	hdr->prefix[strlen(hdr->prefix)] = '\0';
+	return fd;
 }
 
 int in(char *target, char *argv[], int argc) {
