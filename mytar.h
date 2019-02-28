@@ -27,6 +27,10 @@ void xtarchive(int, char *argv[], int, char);
 
 int restore_file(struct header*);
 
+char *dotdot(char*);
+
+char *path_maker(char*, char*);
+
 int min(int, int);
 
 char *prefix_helper(char*);

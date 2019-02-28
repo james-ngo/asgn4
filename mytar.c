@@ -37,7 +37,6 @@ int v_flag = 0;
 int S_flag = 0;
 
 int main(int argc, char *argv[]) {
-	DIR *d;
 	int i, fd;
 	struct stat *buf;
 	int flag = 0;
@@ -46,10 +45,10 @@ int main(int argc, char *argv[]) {
 	char *path;
 	char end[HDR * 2];
         if (argc < 2) {
-                printf("%s: you must specify at least one of the 'ctx' "
-                       "options.\n", argv[0]);
-                printf("usage: %s [ctxSp[f tarfile]] [file1 [ file2 [...] ] ]"
-                       "\n", argv[0]);
+                fprintf(stderr, "%s: you must specify at least one of the 'ctx'"
+                                " options.\n", argv[0]);
+                fprintf(stderr, "usage: %s [ctxSp[f tarfile]] "
+				"[file1 [ file2 [...] ] ]\n", argv[0]);
                 return 1;
         }
 	for (i = 0; i < strlen(argv[1]); i++) {
@@ -81,19 +80,21 @@ int main(int argc, char *argv[]) {
 			S_flag = 1;
 		}
 		else {
-			printf("%s: unrecognized option '%s'.\n",
-				argv[0], argv[1]);
+			fprintf(stderr, "%s: unrecognized option '%c'.\n",
+				argv[0], argv[1][i]);
 		}
 	}	
 	if (ctx > 1) {
-		printf("%s: you must choose one of the 'ctx' options.\n",
-                        argv[0]);
-		printf("usage: %s [ctxSp[f tarfile]] [file1 [ file2 [...] ] ]"
-                        "\n", argv[0]);
+		fprintf(stderr, "%s: you may only choose one of"
+                       " the 'ctx' options.\n", argv[0]);
+		fprintf(stderr, "%s: //home/pn-cs357/demos/mytar "
+			"[ctxSp[f tarfile]] [file1 [ file2 [...] ] ]\n",
+			argv[0]);
 		return 1;
 	}
 	if (!f_flag) {
-		printf("%s: you must specify the 'f' option.\n", argv[0]);
+		fprintf(stderr, "%s: you must specify the 'f' option.\n",
+			argv[0]);
 		return 1;
 	}
 	if (flag == 'c') {
@@ -111,24 +112,23 @@ int main(int argc, char *argv[]) {
 		for (i = 3; i < argc; i++) {
 			path[0] = '\0';
 			if (-1 == lstat(argv[i], buf)) {
-				perror(argv[i]);
-				exit(3);
+				/* do nothing */
 			}
-			if (NULL == (d = opendir(argv[i]))) {
-				perror(argv[i]);
-				exit(2);
+			else {
+				strcat(path, argv[i]);
+				if (path[strlen(path) - 1] != '/' &&
+					S_ISDIR(buf->st_mode)) {
+					strcat(path, "/");
+				}
+				if (S_ISDIR(buf->st_mode) &&
+					1 == write_header(fd, path)) {
+					path[strlen(path)-1] = '\0';
+					octal_err(path);
+					strcat(path, "/");
+				}
+				carchive(fd, path);
+				/* closedir(d); */
 			}
-			strcat(path, argv[i]);
-			if (path[strlen(path) - 1] != '/') {
-				strcat(path, "/");
-			}
-			if (write_header(fd, path)) {
-				path[strlen(path)-1] = '\0';
-				octal_err(path);
-				strcat(path, "/");
-			}
-			carchive(fd, path);
-			closedir(d);
 		}
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
@@ -152,26 +152,26 @@ void carchive(int fd, char *path) {
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
 	if (-1 == lstat(path, buf)) {
 		perror(path);
-		exit(3);
+		return;
 	}
 	if (S_ISDIR(buf->st_mode)) {
 		if (NULL == (d = opendir(path))) {
 			perror(path);
-			exit(2);
+			return;
 		}
 		while ((ent = readdir(d))) {
 			strcat(path, ent->d_name);
 			if (-1 == lstat(path, buf)) {
 				perror(ent->d_name);
 				free(buf);
-				exit(3);
+				return;
 			}
 			path[strlen(path) - strlen(ent->d_name)] = '\0';
 			if (S_ISDIR(buf->st_mode) && strcmp(ent->d_name, ".") &&
 				strcmp(ent->d_name, "..")) {
-				strcat(path, ent->d_name);
+				strcat(path, ent->d_name);	
 				strcat(path, "/");
-				if (write_header(fd, path)) {
+				if (1 == write_header(fd, path)) {
 					path[strlen(path)-1] = '\0';
 					octal_err(path);
 					strcat(path, "/");
@@ -181,15 +181,16 @@ void carchive(int fd, char *path) {
 			}
 			else if (!S_ISDIR(buf->st_mode)) {
 				strcat(path, ent->d_name);
-				if (write_header(fd, path)) {
+				if (1 == write_header(fd, path)) {
 					octal_err(path);
 				}
+				path[strlen(path) - strlen(ent->d_name)] = '\0';
 			}
 		}
 		closedir(d);
 	}
 	else {		
-		if (write_header(fd, path)) {
+		if (1 == write_header(fd, path)) {
 			octal_err(path);
 		}
 	}
@@ -199,17 +200,19 @@ void carchive(int fd, char *path) {
 /* listing an archive */
 void xtarchive(int fd, char *argv[], int argc, char flag) {
 	int fsize, up512, i, st_mode, chksum, fdout, num, wbytes = 0;
-	char *usrgrp;
+	char *usrgrp, *path;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
-	time_t t;
+	struct utimbuf *times;
+	time_t t, mtime;
 	struct tm *time;
 	char perms[PERMS] = "drwxrwxrwx";
 	while (0 < read(fd, hdr, HDR)) {
+		path = path_maker(hdr->prefix, hdr->name);
 		if (!hdr->name[0]) {
 			break;
 		}
 		fsize = strtol(hdr->size, NULL, OCTAL);
-		if (argc < 4 || in(hdr->name, argv, argc)) {
+		if (argc < 4 || in(path, argv, argc)) {
 			chksum = 0;
 			for (i = 0; i < HDR; i++) {
 				if (i < CHKSUM_OFF ||
@@ -227,7 +230,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				VERSION) || strncmp(hdr->magic, "ustar\0",
 				MAGIC) || (hdr->uid[0] < '0' ||
 				hdr->uid[0] > '7')))) {
-				printf("Malformed header found.  Bailing.\n");
+				fprintf(stderr, "Malformed header found.  "
+					"Bailing.\n");
 				exit(7);
 			}
 			if (flag == 't') {
@@ -255,7 +259,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 					strcpy(usrgrp, hdr->uname);
 					strcat(usrgrp, "/");
 					strcat(usrgrp, hdr->gname);
-					printf("%s %17s %8ld %d-%02d-%d %d:%d ",
+					printf("%s %-17s %8ld %d-%02d-%02d"
+					       " %02d:%02d ",
 						perms, usrgrp,
 						strtol(hdr->size, NULL, OCTAL),
 						1900 + time->tm_year,
@@ -268,7 +273,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				if (hdr->prefix[0]) {
 					strcat(hdr->prefix, "/");
 				}
-				printf("%s%s\n", hdr->prefix, hdr->name);
+				printf("%.155s%.100s\n", hdr->prefix,
+					hdr->name);
 				hdr->prefix[strlen(hdr->prefix)] = '\0';
 				if (fsize > 0) {
 				 	up512 = (((fsize / HDR) + 1) * HDR);
@@ -276,7 +282,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				}
 			}
 			else if (flag == 'x') {
-				if ((fdout = restore_file(hdr))) {
+				if ((fdout = restore_file(hdr)) && fsize) {
+					wbytes = 0;
 					while ((num = read(
 						fd, hdr, HDR)) > 0 && wbytes <
 						fsize) {
@@ -287,6 +294,21 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 					}
 					lseek(fd, -HDR, SEEK_CUR);
 				}
+				times = (struct utimbuf*)malloc(sizeof(
+					struct utimbuf));
+				mtime = (time_t)(strtol(
+					hdr->mtime, NULL, OCTAL));
+				times->actime = mtime;
+				times->modtime = mtime;
+				if (-1 == utime(path, times)) {
+					perror(path);
+					return;
+				}
+				if (v_flag) {
+					printf("%.255s\n", path);
+				}
+				free(times);
+				free(path);
 			}
 		}
 	}
@@ -305,41 +327,29 @@ int min(int num1, int num2) {
 int restore_file(struct header *hdr) {
 	/* given a header file restore the file */
 	int fd = 0;
-	time_t mtime;
 	char *path;
 	mode_t perms;
-	struct utimbuf *times = (struct utimbuf*)malloc(sizeof(struct utimbuf));
 	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
-	mtime = (time_t)(strtol(hdr->mtime, NULL, OCTAL));
-	times->modtime = mtime;
+	path = path_maker(hdr->prefix, hdr->name);
 	if (hdr->prefix[0]) {
 		strcat(hdr->prefix, "/");
 	}
-	path = (char*)malloc(sizeof(char) * (strlen(hdr->prefix) +
-		strlen(hdr->name) + 1));
-	if (hdr->prefix[0]) {
-		strcpy(path, hdr->prefix);
-		strcat(path, "/");
-	}
-	strcat(path, hdr->name);
 	if (*(hdr->typeflag) == '5') {
 		mkdir(path, perms);
 	}
 	else if (*(hdr->typeflag) == '2'){
 		/* Create a symlink (figure out how to do that) */
+		symlink(hdr->linkname, path);
 	}
 	else {
 		if (-1 == (fd = creat(path, perms))) {
 			perror(path);
-			exit(2);
+			free(path);
+			exit(1);
 		}		
 	}
-	if (-1 == utime(path, times)) {
-		perror("path");
-		exit(8);
-	}
 	hdr->prefix[strlen(hdr->prefix)] = '\0';
-	free(times);
+	free(path);
 	return fd;
 }
 
@@ -349,13 +359,18 @@ int in(char *target, char *argv[], int argc) {
 		if (path_helper(argv[i], target)) {
 			return 1;
 		}
-		else if (path_helper(strcat(argv[i], "/"), target)) {
-			argv[i][strlen(argv[i]) - 1] = '\0';
-			return 1;
-		}
-		argv[i][strlen(argv[i]) - 1] = '\0';
 	}
 	return 0;
+}
+
+int path_helper(char *prefix, char *path) {
+	int i;
+	for (i = 0; i < strlen(prefix); i++) {
+		if (prefix[i] != path[i]) {
+			return 0;
+		}
+	}
+	return 1;
 }
 
 int write_header(int fdout, char *path) {
@@ -366,11 +381,10 @@ int write_header(int fdout, char *path) {
 	struct passwd *pwd;
 	struct group *grp;
 	struct stat *buf = (struct stat*)malloc(sizeof(struct stat));
-	struct header *hdr; 
+	struct header *hdr;
 	if (-1 == lstat(path, buf)) {
 		perror(path);
-		free(buf);
-		exit(3);
+		return 2;
 	}
 	hdr = (struct header*)malloc(sizeof(struct header));
 	hdr = memset(hdr, 0, HDR);
@@ -438,22 +452,33 @@ int write_header(int fdout, char *path) {
 	sprintf(hdr->chksum, "%07o", chksum);
 	if (-1 == write(fdout, hdr, HDR)) {
 		perror("write");
-		exit(4);
+		return 1;
 	}
-	if (v_flag) {
-		printf("%s\n", path);
-	}
-	if (!S_ISDIR(buf->st_mode)) {
+	if (!S_ISDIR(buf->st_mode) && buf->st_size) {
 		if (-1 == (fdin = open(path, O_RDONLY))) {
 			perror(path);
-			exit(1);
+			return 2;
 		}
 		write_content(fdin, fdout);
 		close(fdin);
 	}
+	if (v_flag) {
+		printf("%s\n", path);
+	}
 	free(buf);
 	free(hdr);
 	return 0;
+}
+
+char *path_maker(char *prefix, char *name) {
+	char *path = (char*)calloc(strlen(prefix) + strlen(name) + 1,
+		sizeof(char));
+	if (prefix[0]) {
+		strcpy(path, prefix);
+		strcat(path, "/");
+	}
+	strcat(path, name);
+	return path;
 }
 
 char *prefix_helper(char *path) {
@@ -469,15 +494,7 @@ char *prefix_helper(char *path) {
 	return name + 1;
 }
 
-int path_helper(char *prefix, char *path) {
-	int i;
-	for (i = 0; i < strlen(prefix); i++) {
-		if (prefix[i] != path[i]) {
-			return 0;
-		}
-	}
-	return 1;
-}
+
 
 void write_content(int fdin, int fdout) {
 	/* Copy contents from file to .tar file.
