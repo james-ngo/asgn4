@@ -132,15 +132,16 @@ int main(int argc, char *argv[]) {
 		}
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
-		close(fd);
 		free(buf);
 		free(path);
+		close(fd);
 	}
 	else {
 		if (-1 == (fd = open(argv[2], O_RDONLY))) {
 			perror("open");			
 		}
 		xtarchive(fd, argv, argc, flag);
+		close(fd);
 	}
         return 0; 
 }
@@ -163,6 +164,7 @@ void carchive(int fd, char *path) {
 			strcat(path, ent->d_name);
 			if (-1 == lstat(path, buf)) {
 				perror(ent->d_name);
+				closedir(d);
 				free(buf);
 				return;
 			}
@@ -202,15 +204,14 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 	int fsize, up512, i, st_mode, chksum, fdout, num, wbytes = 0;
 	char *usrgrp, *path;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
-	struct utimbuf *times;
-	time_t t, mtime;
+	time_t t;
 	struct tm *time;
 	char perms[PERMS] = "drwxrwxrwx";
 	while (0 < read(fd, hdr, HDR)) {
-		path = path_maker(hdr->prefix, hdr->name);
 		if (!hdr->name[0]) {
 			break;
 		}
+		path = path_maker(hdr->prefix, hdr->name);
 		fsize = strtol(hdr->size, NULL, OCTAL);
 		if (argc < 4 || in(path, argv, argc)) {
 			chksum = 0;
@@ -255,7 +256,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 					time = localtime(&t);
 					usrgrp = (char*)malloc(sizeof(char) *
 						(strlen(hdr->uname) +
-						strlen(hdr->gname) + 1));
+						strlen(hdr->gname) + 2));
 					strcpy(usrgrp, hdr->uname);
 					strcat(usrgrp, "/");
 					strcat(usrgrp, hdr->gname);
@@ -280,6 +281,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				 	up512 = (((fsize / HDR) + 1) * HDR);
 					lseek(fd, up512, SEEK_CUR);
 				}
+				free(path);
 			}
 			else if (flag == 'x') {
 				if ((fdout = restore_file(hdr)) && fsize) {
@@ -294,20 +296,9 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 					}
 					lseek(fd, -HDR, SEEK_CUR);
 				}
-				times = (struct utimbuf*)malloc(sizeof(
-					struct utimbuf));
-				mtime = (time_t)(strtol(
-					hdr->mtime, NULL, OCTAL));
-				times->actime = mtime;
-				times->modtime = mtime;
-				if (-1 == utime(path, times)) {
-					perror(path);
-					return;
-				}
 				if (v_flag) {
 					printf("%.255s\n", path);
 				}
-				free(times);
 				free(path);
 			}
 		}
@@ -329,6 +320,8 @@ int restore_file(struct header *hdr) {
 	int fd = 0;
 	char *path;
 	mode_t perms;
+	struct utimbuf *times;
+	time_t mtime;
 	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
 	path = path_maker(hdr->prefix, hdr->name);
 	if (hdr->prefix[0]) {
@@ -346,7 +339,17 @@ int restore_file(struct header *hdr) {
 			perror(path);
 			free(path);
 			exit(1);
-		}		
+		}
+		times = (struct utimbuf*)malloc(sizeof(struct utimbuf));
+		mtime = (time_t)(strtol(
+		hdr->mtime, NULL, OCTAL));
+		times->actime = mtime;
+		times->modtime = mtime;
+		if (-1 == utime(path, times)) {
+			perror(path);
+			exit(2);
+		}
+		free(times);
 	}
 	hdr->prefix[strlen(hdr->prefix)] = '\0';
 	free(path);
