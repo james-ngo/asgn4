@@ -211,6 +211,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 		if (!hdr->name[0]) {
 			break;
 		}
+		/* printf("name: %s, size: %s\n", hdr->name, hdr->size); */
 		path = path_maker(hdr->prefix, hdr->name);
 		fsize = strtol(hdr->size, NULL, OCTAL);
 		if (argc < 4 || in(path, argv, argc)) {
@@ -231,6 +232,17 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				VERSION) || strncmp(hdr->magic, "ustar\0",
 				MAGIC) || (hdr->uid[0] < '0' ||
 				hdr->uid[0] > '7')))) {
+				printf("chksum: %o, hdr->chksum: %s\n",
+					chksum, hdr->chksum);
+				printf("ustar: %d\n", strncmp(hdr->magic,
+					"ustar", MAGIC - 1));
+				printf("S_flag: %d\n", S_flag);
+				printf("version: %d\n", strncmp(hdr->version,
+					"00", VERSION));
+				printf("S_ustar: %d\n", strncmp(hdr->magic,
+					"ustar\0", MAGIC));
+				printf("0 - 7: %d\n", hdr->uid[0] < '0' ||
+					hdr->uid[0] > '7');
 				fprintf(stderr, "Malformed header found.  "
 					"Bailing.\n");
 				exit(7);
@@ -286,15 +298,15 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 			else if (flag == 'x') {
 				if ((fdout = restore_file(hdr)) && fsize) {
 					wbytes = 0;
-					while ((num = read(
-						fd, hdr, HDR)) > 0 && wbytes <
-						fsize) {
+					while (fsize > 0 && (num = read(
+						fd, hdr, HDR)) > 0) {
 						wbytes += num;
 						write(fdout, hdr,
 							min(HDR, fsize));
 						fsize -= HDR;
 					}
-					lseek(fd, -HDR, SEEK_CUR);
+					/* lseek(fd, -HDR, SEEK_CUR); */
+					close(fdout);
 				}
 				if (v_flag) {
 					printf("%.255s\n", path);
