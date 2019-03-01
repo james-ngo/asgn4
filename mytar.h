@@ -37,7 +37,9 @@ char *prefix_helper(char*);
 
 int path_helper(char*, char*);
 
-int in(char*, char *argv[], int);
+int tin(char*, char *argv[], int);
+
+int xin(char*, char *argv[], int);
 
 int write_header(int, char*);
 

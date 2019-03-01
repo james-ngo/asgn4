@@ -201,7 +201,7 @@ void carchive(int fd, char *path) {
 
 /* listing an archive */
 void xtarchive(int fd, char *argv[], int argc, char flag) {
-	int fsize, up512, i, st_mode, chksum, fdout, num, wbytes = 0;
+	int fsize, up512, i, st_mode, chksum, fdout, num;
 	char *usrgrp, *path;
 	struct header *hdr = (struct header*)malloc(sizeof(struct header));
 	time_t t;
@@ -211,10 +211,10 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 		if (!hdr->name[0]) {
 			break;
 		}
-		/* printf("name: %s, size: %s\n", hdr->name, hdr->size); */
 		path = path_maker(hdr->prefix, hdr->name);
 		fsize = strtol(hdr->size, NULL, OCTAL);
-		if (argc < 4 || in(path, argv, argc)) {
+		if (argc < 4 || (tin(path, argv, argc) && flag == 't') ||
+			(xin(path, argv, argc) && flag == 'x')) {
 			chksum = 0;
 			for (i = 0; i < HDR; i++) {
 				if (i < CHKSUM_OFF ||
@@ -232,17 +232,6 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				VERSION) || strncmp(hdr->magic, "ustar\0",
 				MAGIC) || (hdr->uid[0] < '0' ||
 				hdr->uid[0] > '7')))) {
-				printf("chksum: %o, hdr->chksum: %s\n",
-					chksum, hdr->chksum);
-				printf("ustar: %d\n", strncmp(hdr->magic,
-					"ustar", MAGIC - 1));
-				printf("S_flag: %d\n", S_flag);
-				printf("version: %d\n", strncmp(hdr->version,
-					"00", VERSION));
-				printf("S_ustar: %d\n", strncmp(hdr->magic,
-					"ustar\0", MAGIC));
-				printf("0 - 7: %d\n", hdr->uid[0] < '0' ||
-					hdr->uid[0] > '7');
 				fprintf(stderr, "Malformed header found.  "
 					"Bailing.\n");
 				exit(7);
@@ -297,15 +286,12 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 			}
 			else if (flag == 'x') {
 				if ((fdout = restore_file(hdr)) && fsize) {
-					wbytes = 0;
 					while (fsize > 0 && (num = read(
 						fd, hdr, HDR)) > 0) {
-						wbytes += num;
 						write(fdout, hdr,
 							min(HDR, fsize));
 						fsize -= HDR;
 					}
-					/* lseek(fd, -HDR, SEEK_CUR); */
 					close(fdout);
 				}
 				if (v_flag) {
@@ -313,6 +299,9 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				}
 				free(path);
 			}
+		}
+		else if (fsize) {
+			lseek(fd, ((fsize / HDR) + 1) * HDR, SEEK_CUR);
 		}
 	}
 	free(hdr);
@@ -330,15 +319,19 @@ int min(int num1, int num2) {
 int restore_file(struct header *hdr) {
 	/* given a header file restore the file */
 	int fd = 0;
-	char *path;
+	char *path, name[NAME], prefix[PREFIX];
 	mode_t perms;
 	struct utimbuf *times;
 	time_t mtime;
 	perms = (mode_t)strtol(hdr->mode, NULL, OCTAL);
-	path = path_maker(hdr->prefix, hdr->name);
+	strncpy(name, hdr->name, NAME);
+	strncpy(prefix, hdr->prefix, PREFIX);
+	path = path_maker(prefix, name);
+	/*
 	if (hdr->prefix[0]) {
 		strcat(hdr->prefix, "/");
 	}
+	*/
 	if (*(hdr->typeflag) == '5') {
 		mkdir(path, perms);
 	}
@@ -368,7 +361,18 @@ int restore_file(struct header *hdr) {
 	return fd;
 }
 
-int in(char *target, char *argv[], int argc) {
+int xin(char *target, char *argv[], int argc) {
+	int i;
+	for (i = 3; i < argc; i++) {
+		if (path_helper(argv[i], target) ||
+			path_helper(target, argv[i])) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int tin(char *target, char *argv[], int argc) {
 	int i;
 	for (i = 3; i < argc; i++) {
 		if (path_helper(argv[i], target)) {
