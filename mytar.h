@@ -35,11 +35,13 @@ int min(int, int);
 
 char *prefix_helper(char*);
 
+char *parent_dir(char*);
+
 int path_helper(char*, char*);
 
 int tin(char*, char *argv[], int);
 
-int xin(char*, char *argv[], int);
+int xin(char*, char, char *argv[], int);
 
 int write_header(int, char*);
 

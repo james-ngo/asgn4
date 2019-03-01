@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
 	int ctx = 0;
 	char *path;
 	char end[HDR * 2];
+/* Error checking here. */
         if (argc < 2) {
                 fprintf(stderr, "%s: you must specify at least one of the 'ctx'"
                                 " options.\n", argv[0]);
@@ -51,6 +52,7 @@ int main(int argc, char *argv[]) {
 				"[file1 [ file2 [...] ] ]\n", argv[0]);
                 return 1;
         }
+/* Flag setting. */
 	for (i = 0; i < strlen(argv[1]); i++) {
 		if (argv[1][i] == 'c') {
 			ctx++;
@@ -98,6 +100,8 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	if (flag == 'c') {
+/* Creating an archive. We open the tar file to write to and we write headers
+ * for normal files and recurse through directories */
 		buf = (struct stat*)malloc(sizeof(struct stat));
 		path = (char*)malloc(sizeof(char) * PATH_MAX);
 		if (-1 == (fd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC,
@@ -127,9 +131,9 @@ int main(int argc, char *argv[]) {
 					strcat(path, "/");
 				}
 				carchive(fd, path);
-				/* closedir(d); */
 			}
 		}
+/* Here is where we write the two 512 byte null blocks at the end. */
 		memset(end, 0, HDR * 2);
 		write(fd, end, HDR * 2);
 		free(buf);
@@ -146,7 +150,9 @@ int main(int argc, char *argv[]) {
         return 0; 
 }
 
-/* creates an archive */
+/* This does the builk of the work in creating an archive. It just traverses
+ * the directories recursively and uses a separate functions to write the
+ * headers to the .tar file. */
 void carchive(int fd, char *path) {
 	DIR *d;
 	struct dirent *ent;
@@ -160,6 +166,8 @@ void carchive(int fd, char *path) {
 			perror(path);
 			return;
 		}
+/* Loop through directory entries and recurse through directories that are
+ * not '.' and '..'. Also write nondirectory files. */
 		while ((ent = readdir(d))) {
 			strcat(path, ent->d_name);
 			if (-1 == lstat(path, buf)) {
@@ -199,7 +207,8 @@ void carchive(int fd, char *path) {
 	free(buf);
 }
 
-/* listing an archive */
+/* This function handles both the 't' and 'x' option. Uses a while loop to read
+ * 512 bytes at a time from the .tar file an archive */
 void xtarchive(int fd, char *argv[], int argc, char flag) {
 	int fsize, up512, i, st_mode, chksum, fdout, num;
 	char *usrgrp, *path;
@@ -213,8 +222,9 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 		}
 		path = path_maker(hdr->prefix, hdr->name);
 		fsize = strtol(hdr->size, NULL, OCTAL);
-		if (argc < 4 || (tin(path, argv, argc) && flag == 't') ||
-			(xin(path, argv, argc) && flag == 'x')) {
+		if (argc < 4 || (tin(path, argv, argc) &&
+			flag == 't') || (xin(path, *hdr->typeflag, argv, argc)
+			&& flag == 'x')) {
 			chksum = 0;
 			for (i = 0; i < HDR; i++) {
 				if (i < CHKSUM_OFF ||
@@ -226,6 +236,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 					chksum += ' ';
 				}
 			}
+/* Checking for bad headers.*/
 			if (chksum != strtol(hdr->chksum, NULL, OCTAL)
 				|| strncmp(hdr->magic, "ustar", MAGIC - 1) ||
 				(S_flag && (strncmp(hdr->version, "00",
@@ -237,6 +248,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				exit(7);
 			}
 			if (flag == 't') {
+/* All the 'v' option stuff for listing an archive. */
 				if (v_flag) {
 					st_mode = strtol(hdr->mode, NULL, 8);
 					for (i = 0; i < PERMS; i++) {
@@ -286,6 +298,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 			}
 			else if (flag == 'x') {
 				if ((fdout = restore_file(hdr)) && fsize) {
+/* Copy contents from .tar file to the file that we created through the
+ * restore_file funciton. */
 					while (fsize > 0 && (num = read(
 						fd, hdr, HDR)) > 0) {
 						write(fdout, hdr,
@@ -301,12 +315,17 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 			}
 		}
 		else if (fsize) {
+/* Here is where we skip past the contents a file in the .tar file for the
+ * 't' option. */
 			lseek(fd, ((fsize / HDR) + 1) * HDR, SEEK_CUR);
 		}
 	}
 	free(hdr);
 }
 
+/* Simple funciton for getting a lower number. We use this when we want to
+ * write to the files we extract from the archive, so we don't write a bunch
+ * of null characters. */
 int min(int num1, int num2) {
 	if (num1 < num2) {
 		return num1;
@@ -327,16 +346,10 @@ int restore_file(struct header *hdr) {
 	strncpy(name, hdr->name, NAME);
 	strncpy(prefix, hdr->prefix, PREFIX);
 	path = path_maker(prefix, name);
-	/*
-	if (hdr->prefix[0]) {
-		strcat(hdr->prefix, "/");
-	}
-	*/
 	if (*(hdr->typeflag) == '5') {
 		mkdir(path, perms);
 	}
 	else if (*(hdr->typeflag) == '2'){
-		/* Create a symlink (figure out how to do that) */
 		symlink(hdr->linkname, path);
 	}
 	else {
@@ -345,6 +358,7 @@ int restore_file(struct header *hdr) {
 			free(path);
 			exit(1);
 		}
+/* Here is where we restore mtime. */
 		times = (struct utimbuf*)malloc(sizeof(struct utimbuf));
 		mtime = (time_t)(strtol(
 		hdr->mtime, NULL, OCTAL));
@@ -361,27 +375,46 @@ int restore_file(struct header *hdr) {
 	return fd;
 }
 
-int xin(char *target, char *argv[], int argc) {
+/* This function helps us see if we should extract a file if there are files
+ * that are specified on the command line. */
+int xin(char *file, char type, char *argv[], int argc) {
 	int i;
 	for (i = 3; i < argc; i++) {
-		if (path_helper(argv[i], target) ||
-			path_helper(target, argv[i])) {
+		if (path_helper(argv[i], file) || (path_helper(file, argv[i])
+			&& type == '5')) {
 			return 1;
 		}
 	}
 	return 0;
 }
 
-int tin(char *target, char *argv[], int argc) {
+/* This function helps us see if we should list a file if there are files that
+ * are specified on the command line. */
+int tin(char *file, char *argv[], int argc) {
 	int i;
 	for (i = 3; i < argc; i++) {
-		if (path_helper(argv[i], target)) {
+		if (path_helper(argv[i], file)) {
 			return 1;
 		}
 	}
 	return 0;
 }
-
+/*
+char *parent_dir(char *file) {
+	int i;
+	char *parent = (char*)malloc(sizeof(char) * strlen(file));
+	strcpy(parent, file);
+	for (i = 2; i < strlen(parent); i++) {
+		if (file[strlen(parent) - i] == '/') {
+			parent[strlen(parent) - i] = '\0';
+			return parent;
+		}
+	}
+	return parent;
+}
+*/
+/* This function returns 1 if prefix is entirely composed of the beginning of
+ * path. */
 int path_helper(char *prefix, char *path) {
 	int i;
 	for (i = 0; i < strlen(prefix); i++) {
@@ -392,6 +425,10 @@ int path_helper(char *prefix, char *path) {
 	return 1;
 }
 
+/* Here is where we write a header to the .tar file given a pathname. It's a
+ * really logn function but literally all it does is take information from
+ * statting a file and but that stuff in a struct header then right the entire
+ * header. */
 int write_header(int fdout, char *path) {
 	/* Populate header struct and write to outfile. */
 	int fdin, i;
@@ -489,6 +526,8 @@ int write_header(int fdout, char *path) {
 	return 0;
 }
 
+/* This function helps us construct a full path from a header that has its
+ * pathname split into the prefix section of the header. */
 char *path_maker(char *prefix, char *name) {
 	char *path = (char*)calloc(strlen(prefix) + strlen(name) + 1,
 		sizeof(char));
@@ -500,6 +539,10 @@ char *path_maker(char *prefix, char *name) {
 	return path;
 }
 
+/* The function takes a pathname and overwrites the rightmost '/' character
+ * with a '\0' and returns a pointer to just the filename rather than the full
+ * path name. We use this to put the name of the file in the header in the
+ * name section. */
 char *prefix_helper(char *path) {
 	int i;
 	char *name;
@@ -512,8 +555,6 @@ char *prefix_helper(char *path) {
 	*name = '\0';
 	return name + 1;
 }
-
-
 
 void write_content(int fdin, int fdout) {
 	/* Copy contents from file to .tar file.
@@ -529,12 +570,15 @@ void write_content(int fdin, int fdout) {
 	write(fdout, buf, (((bytes_written / HDR) + 1) * HDR) - bytes_written);
 }
 
+/* Throwing an error for when the 'S' flag is used and the uid is too long. */
 void octal_err(char *path) {
 	printf("(insert_octal:251) octal value too long. (013655557)\n"
 	       "octal value too long. (013655557)\n"
 	       "%s: Unable to create conforming header.  Skipping.\n", path);
 }
 
+/* You know better than I do what this does Dr. Nico. It helps us deal with
+ * uids that are too long to represent in 7 octal digits. */
 int insert_octal(char *where, size_t size, int32_t val) {
 	int err = 0;
 	if (val < 0 || (size < sizeof(val))) {
@@ -548,6 +592,8 @@ int insert_octal(char *where, size_t size, int32_t val) {
 	return err;
 }
 
+/* I don't think I even use this, but it's here in case we ever needed to
+ * restore uids, which I don't think we needed to do. */
 uint32_t extract_octal(char *where, int len) {
 	int32_t val = -1;
 	if ((len >= sizeof(val)) && (where[0] & 0x80)) {
