@@ -222,7 +222,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 		}
 		path = path_maker(hdr->prefix, hdr->name);
 		fsize = strtol(hdr->size, NULL, OCTAL);
-		if (argc < 4 || (tin(path, argv, argc) &&
+		if (argc < 4 || (tin(path, *hdr->typeflag, argv, argc) &&
 			flag == 't') || (xin(path, *hdr->typeflag, argv, argc)
 			&& flag == 'x')) {
 			chksum = 0;
@@ -390,16 +390,29 @@ int xin(char *file, char type, char *argv[], int argc) {
 
 /* This function helps us see if we should list a file if there are files that
  * are specified on the command line. */
-int tin(char *file, char *argv[], int argc) {
+int tin(char *file, char type, char *argv[], int argc) {
 	int i;
 	for (i = 3; i < argc; i++) {
 		if (path_helper(argv[i], file)) {
+			if (!contains('/', file) && strcmp(file, argv[i])) {
+				return 0;
+			}
 			return 1;
 		}
 	}
 	return 0;
 }
-/*
+
+int contains(char c, char *str) {
+	int i;
+	for (i = 0; i < strlen(str); i++) {
+		if (str[i] == c) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 char *parent_dir(char *file) {
 	int i;
 	char *parent = (char*)malloc(sizeof(char) * strlen(file));
@@ -410,9 +423,9 @@ char *parent_dir(char *file) {
 			return parent;
 		}
 	}
+	parent[0] = '\0';	
 	return parent;
 }
-*/
 /* This function returns 1 if prefix is entirely composed of the beginning of
  * path. */
 int path_helper(char *prefix, char *path) {

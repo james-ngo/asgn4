@@ -39,7 +39,9 @@ char *parent_dir(char*);
 
 int path_helper(char*, char*);
 
-int tin(char*, char *argv[], int);
+int tin(char*, char, char *argv[], int);
+
+int contains(char, char*);
 
 int xin(char*, char, char *argv[], int);
 
