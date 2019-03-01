@@ -245,6 +245,8 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 				hdr->uid[0] > '7')))) {
 				fprintf(stderr, "Malformed header found.  "
 					"Bailing.\n");
+				free(path);
+				free(hdr);
 				exit(7);
 			}
 			if (flag == 't') {
@@ -318,6 +320,7 @@ void xtarchive(int fd, char *argv[], int argc, char flag) {
 /* Here is where we skip past the contents a file in the .tar file for the
  * 't' option. */
 			lseek(fd, ((fsize / HDR) + 1) * HDR, SEEK_CUR);
+			free(path);
 		}
 	}
 	free(hdr);
